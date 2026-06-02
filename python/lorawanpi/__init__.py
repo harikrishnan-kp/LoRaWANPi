@@ -1,4 +1,4 @@
-from .wrapper import LoraWanPi, LoraWanPiError, SendResult, encode_rain_payload, send_abp, send_rain_abp
+from .wrapper import LoraWanPi, LoraWanPiError, SendResult, encode_rain_payload, send_abp, send_rain_abp, send_otaa, send_rain_otaa
 
 __all__ = [
     "LoraWanPi",
@@ -7,4 +7,6 @@ __all__ = [
     "encode_rain_payload",
     "send_abp",
     "send_rain_abp",
+    "send_otaa",
+    "send_rain_otaa",
 ]

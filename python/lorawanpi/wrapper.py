@@ -80,6 +80,20 @@ class LoraWanPi:
         ]
         self._send_abp.restype = ctypes.c_int
 
+        self._send_otaa = self._lib.lmic_rpi_send_otaa
+        self._send_otaa.argtypes = [
+            ctypes.c_char_p,
+            ctypes.c_char_p,
+            ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_uint8),
+            ctypes.c_uint8,
+            ctypes.c_uint8,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(_NativeResult),
+        ]
+        self._send_otaa.restype = ctypes.c_int
+
     def send_abp(
         self,
         devaddr: str,
@@ -132,6 +146,61 @@ class LoraWanPi:
 
         if rc != 0:
             raise LoraWanPiError(f"send_abp failed with native status {rc}")
+
+        return result
+
+    def send_otaa(
+        self,
+        deveui: str,
+        appeui: str,
+        appkey: str,
+        payload: bytes,
+        *,
+        port: int = 1,
+        use_leds: bool = True,
+        timeout_ms: int = 60000,
+    ) -> SendResult:
+        _validate_hex(deveui, 8, "deveui")
+        _validate_hex(appeui, 8, "appeui")
+        _validate_hex(appkey, 16, "appkey")
+
+        if not 1 <= port <= 223:
+            raise ValueError("port must be between 1 and 223")
+        if len(payload) > 51:
+            raise ValueError("payload must be 51 bytes or fewer")
+        if timeout_ms < 0:
+            raise ValueError("timeout_ms must be non-negative")
+
+        payload_buffer = (ctypes.c_uint8 * max(len(payload), 1))()
+        for index, value in enumerate(payload):
+            payload_buffer[index] = value
+
+        native_result = _NativeResult()
+        rc = self._send_otaa(
+            deveui.encode("ascii"),
+            appeui.encode("ascii"),
+            appkey.encode("ascii"),
+            payload_buffer,
+            len(payload),
+            port,
+            int(use_leds),
+            timeout_ms,
+            ctypes.byref(native_result),
+        )
+
+        result = SendResult(
+            status=native_result.status,
+            event=native_result.event,
+            txrx_flags=native_result.txrx_flags,
+            ack=bool(native_result.ack),
+            nack=bool(native_result.nack),
+            rssi_dbm=native_result.rssi_dbm,
+            snr_db=float(native_result.snr_db),
+            downlink=bytes(native_result.downlink[: native_result.downlink_len]),
+        )
+
+        if rc != 0:
+            raise LoraWanPiError(f"send_otaa failed with native status {rc}")
 
         return result
 
@@ -193,6 +262,49 @@ def send_rain_abp(
         nwkskey,
         appskey,
         rain_mm,
+        use_leds=use_leds,
+        timeout_ms=timeout_ms,
+    )
+
+
+def send_otaa(
+    deveui: str,
+    appeui: str,
+    appkey: str,
+    payload: bytes,
+    *,
+    port: int = 1,
+    use_leds: bool = True,
+    timeout_ms: int = 60000,
+    library_path: Optional[str | Path] = None,
+) -> SendResult:
+    return LoraWanPi(library_path).send_otaa(
+        deveui,
+        appeui,
+        appkey,
+        payload,
+        port=port,
+        use_leds=use_leds,
+        timeout_ms=timeout_ms,
+    )
+
+
+def send_rain_otaa(
+    deveui: str,
+    appeui: str,
+    appkey: str,
+    rain_mm: float,
+    *,
+    use_leds: bool = True,
+    timeout_ms: int = 60000,
+    library_path: Optional[str | Path] = None,
+) -> SendResult:
+    return LoraWanPi(library_path).send_otaa(
+        deveui,
+        appeui,
+        appkey,
+        encode_rain_payload(rain_mm),
+        port=1,
         use_leds=use_leds,
         timeout_ms=timeout_ms,
     )

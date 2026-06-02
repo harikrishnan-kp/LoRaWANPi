@@ -44,12 +44,17 @@ lmic_pinmap pins = {
 };
 
 static volatile int send_complete = 0;
+static volatile int join_complete = 0;
+static volatile int join_failed = 0;
 static int use_leds = 1;
 static lmic_rpi_result current_result;
+static uint8_t g_devEui[8];
+static uint8_t g_appEui[8];
+static uint8_t g_appKey[16];
 
-void os_getArtEui(u1_t *buf) { (void)buf; }
-void os_getDevEui(u1_t *buf) { (void)buf; }
-void os_getDevKey(u1_t *buf) { (void)buf; }
+void os_getArtEui(u1_t *buf) { memcpy(buf, g_appEui, sizeof(g_appEui)); }
+void os_getDevEui(u1_t *buf) { memcpy(buf, g_devEui, sizeof(g_devEui)); }
+void os_getDevKey(u1_t *buf) { memcpy(buf, g_appKey, sizeof(g_appKey)); }
 
 static int hex_value(char c)
 {
@@ -89,6 +94,13 @@ void onEvent(ev_t ev)
 {
     current_result.event = ev;
 
+    if (ev == EV_JOINED) {
+        join_complete = 1;
+    }
+    if (ev == EV_JOIN_FAILED || ev == EV_REJOIN_FAILED) {
+        join_failed = 1;
+    }
+
     if (ev != EV_TXCOMPLETE) {
         return;
     }
@@ -112,6 +124,36 @@ void onEvent(ev_t ev)
         digitalWrite(DATA_SENT_LED, LOW);
     }
     send_complete = 1;
+}
+
+static int wait_for_join(int timeout_ms)
+{
+    struct timespec start;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    while (!join_complete && !join_failed) {
+        if (timeout_ms > 0 && elapsed_ms(&start) >= timeout_ms) {
+            return -1;
+        }
+        if (!os_runloop_once()) {
+            usleep(1000);
+        }
+    }
+    return join_complete ? 0 : -2;
+}
+
+static int wait_for_send(int timeout_ms)
+{
+    struct timespec start;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    while (!send_complete) {
+        if (timeout_ms > 0 && elapsed_ms(&start) >= timeout_ms) {
+            return -1;
+        }
+        if (!os_runloop_once()) {
+            usleep(1000);
+        }
+    }
+    return 0;
 }
 
 extern "C" int lmic_rpi_send_abp(
@@ -197,6 +239,95 @@ extern "C" int lmic_rpi_send_abp(
         if (!os_runloop_once()) {
             usleep(1000);
         }
+    }
+
+    *result = current_result;
+    return current_result.status;
+}
+
+extern "C" int lmic_rpi_send_otaa(
+    const char *deveui_hex,
+    const char *appeui_hex,
+    const char *appkey_hex,
+    const uint8_t *payload,
+    uint8_t payload_len,
+    uint8_t port,
+    int leds_enabled,
+    int timeout_ms,
+    lmic_rpi_result *result)
+{
+    if (result == NULL) return -1;
+    memset(&current_result, 0, sizeof(current_result));
+    current_result.status = -1;
+    *result = current_result;
+
+    if (parse_hex(deveui_hex, g_devEui, sizeof(g_devEui)) < 0 ||
+        parse_hex(appeui_hex, g_appEui, sizeof(g_appEui)) < 0 ||
+        parse_hex(appkey_hex, g_appKey, sizeof(g_appKey)) < 0) {
+        current_result.status = -2;
+        *result = current_result;
+        return -2;
+    }
+
+    if (payload_len > 0 && payload == NULL) {
+        current_result.status = -3;
+        *result = current_result;
+        return -3;
+    }
+
+    use_leds = leds_enabled ? 1 : 0;
+    join_complete = 0;
+    join_failed = 0;
+    send_complete = 0;
+
+    wiringPiSetup();
+    os_init();
+    LMIC_reset();
+
+    for (int channel = 8; channel < 72; ++channel) {
+        LMIC_disableChannel(channel);
+    }
+
+    LMIC_setAdrMode(0);
+    LMIC_setLinkCheckMode(0);
+    LMIC_disableTracking();
+    LMIC_stopPingable();
+    LMIC.dn2Dr = 8;
+    LMIC_setDrTxpow(DEFAULT_DATA_RATE, DEFAULT_TX_POWER);
+
+    if (use_leds) {
+        pinMode(STATUS_PIN_LED, OUTPUT);
+        pinMode(DATA_SENT_LED, OUTPUT);
+        digitalWrite(STATUS_PIN_LED, HIGH);
+        delay(100);
+        digitalWrite(STATUS_PIN_LED, LOW);
+    }
+
+    if (!LMIC_startJoining()) {
+        // no-op: already joined or joining state is active
+    }
+
+    if (wait_for_join(timeout_ms) != 0) {
+        current_result.status = -4;
+        *result = current_result;
+        return -4;
+    }
+
+    int rc = LMIC_setTxData2(port, (xref2u1_t)payload, payload_len, 0);
+    if (rc != 0) {
+        current_result.status = rc;
+        *result = current_result;
+        return rc;
+    }
+
+    if (use_leds) {
+        digitalWrite(DATA_SENT_LED, HIGH);
+    }
+
+    if (wait_for_send(timeout_ms) != 0) {
+        current_result.status = -5;
+        *result = current_result;
+        return -5;
     }
 
     *result = current_result;
