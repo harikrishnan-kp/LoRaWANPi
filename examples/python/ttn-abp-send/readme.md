@@ -1,0 +1,4 @@
+
+```bash
+python3 examples/python/ttn-abp-send/ttn-abp-send.py AB0096CD 1A2B80150C4ED6DADA2B2CFD822C6378 12345678972908DA7A6C09771181A21C 3.12 1
+```
