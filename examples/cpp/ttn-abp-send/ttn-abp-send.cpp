@@ -1,18 +1,17 @@
-#define DATA_RATE_UP_DOWN 2 // Spreading factor (DR0 - DR5)
-#define TX_POWER 20         // power option: 2, 5, 8, 11, 14 and 20
-#define SESSION_PORT 1      // Port session
-
-// AUXILIARY LIBRARIES
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+
 #include <wiringPi.h>
 #include <lmic.h>
 #include <hal.h>
 #include <local_hal.h>
 
-// VARIABLES AND DEFINITIONS
+#define DATA_RATE_UP_DOWN 2 // Spreading factor (DR0 - DR5)
+#define TX_POWER 20         // power option: 2, 5, 8, 11, 14 and 20
+#define SESSION_PORT 1      // Port session
+
 // Module RFM95 pin mapping
 #define RFM95_PIN_NSS 6
 #define RFM95_PIN_RST 0
@@ -90,7 +89,7 @@ void onEvent(ev_t ev)
   }
 }
 
-static void do_send(osjob_t *j, float rain)
+static void do_send(osjob_t *j, float data)
 {
   time_t t = time(NULL);
   fprintf(stdout, "[%x] (%ld) %s\n", hal_ticks(), t, ctime(&t));
@@ -112,12 +111,12 @@ static void do_send(osjob_t *j, float rain)
   else
   {
     // Convert float to fixed-point integer representation
-    int int_rain = (int)(rain * 100);
+    int int_data = (int)(data * 100);
 
     // Prepare upstream data transmission at the next possible time.
     unsigned char buf[2];
-    buf[0] = (int_rain >> 8) & 0xFF;
-    buf[1] = int_rain & 0xFF;
+    buf[0] = (int_data >> 8) & 0xFF;
+    buf[1] = int_data & 0xFF;
     LMIC_setTxData2(1, buf, 2, 0);
   }
 
@@ -126,7 +125,7 @@ static void do_send(osjob_t *j, float rain)
     digitalWrite(DATA_SENT_LED, HIGH);
 }
 
-void setup(u1_t *DevAddr, u1_t *Nwkskey, u1_t *Appskey, float rain)
+void setup(u1_t *DevAddr, u1_t *Nwkskey, u1_t *Appskey, float data)
 {
   // wiringPi init
   wiringPiSetup();
@@ -173,31 +172,31 @@ void setup(u1_t *DevAddr, u1_t *Nwkskey, u1_t *Appskey, float rain)
   }
 
   // Send data once
-  do_send(&sendjob, rain);
+  do_send(&sendjob, data);
 }
 
 int main(int argc, char *argv[])
 {
   if (argc != 6)
   {
-    fprintf(stderr, "Usage: %s <DevAddr> <Nwkskey> <Appskey> <Rain> <UseLeds>\n", argv[0]);
+    fprintf(stderr, "Usage: %s <DevAddr> <Nwkskey> <Appskey> <Data> <UseLeds>\n", argv[0]);
     exit(1);
   }
 
   u1_t DevAddr[4];
   u1_t Nwkskey[16];
   u1_t Appskey[16];
-  float rain;
+  float data;
 
   sscanf(argv[1], "%2hhx%2hhx%2hhx%2hhx", &DevAddr[0], &DevAddr[1], &DevAddr[2], &DevAddr[3]);
   for (int i = 0; i < 16; i++)
     sscanf(&argv[2][i * 2], "%2hhx", &Nwkskey[i]);
   for (int i = 0; i < 16; i++)
     sscanf(&argv[3][i * 2], "%2hhx", &Appskey[i]);
-  sscanf(argv[4], "%f", &rain);
+  sscanf(argv[4], "%f", &data);
   sscanf(argv[5], "%d", &useLeds);
 
-  setup(DevAddr, Nwkskey, Appskey, rain);
+  setup(DevAddr, Nwkskey, Appskey, data);
 
   // Run the loop once
   os_runloop();
@@ -209,7 +208,7 @@ int main(int argc, char *argv[])
 /*
 function Decode(fPort, bytes, variables) {
   var decoded = {};
-  decoded.rain = ((bytes[0] << 8) | bytes[1]) / 100.0;
+  decoded.data = ((bytes[0] << 8) | bytes[1]) / 100.0;
   return decoded;
 }
 */

@@ -143,7 +143,7 @@ static int wait_for_send(int timeout_ms)
 int main(int argc, char *argv[])
 {
     if (argc != 6) {
-        fprintf(stderr, "Usage: %s <DevEUI> <AppEUI> <AppKey> <Rain> <UseLeds>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <DevEUI> <AppEUI> <AppKey> <Data> <UseLeds>\n", argv[0]);
         return 1;
     }
 
@@ -154,11 +154,11 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    float rain = strtof(argv[4], NULL);
+    float data = strtof(argv[4], NULL);
     useLeds = atoi(argv[5]);
 
     uint8_t payload[2];
-    int fixed = (int)(rain * 100.0f);
+    int fixed = (int)(data * 100.0f);
     payload[0] = (fixed >> 8) & 0xFF;
     payload[1] = fixed & 0xFF;
 
