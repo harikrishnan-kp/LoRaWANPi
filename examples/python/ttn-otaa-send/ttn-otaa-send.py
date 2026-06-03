@@ -1,79 +1,73 @@
 from __future__ import annotations
 
+import argparse
 import sys
 import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-PYTHON_PACKAGE_DIR = REPO_ROOT / "python"
-if str(PYTHON_PACKAGE_DIR) not in sys.path:
-    sys.path.insert(0, str(PYTHON_PACKAGE_DIR))
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-from lorawanpi import LoraWanPiError, encode_rain_payload, send_rain_otaa
-
-EV_TXCOMPLETE = 10
-
-
-def usage(program: str) -> str:
-    return f"Usage: {program} <DevEUI> <AppEUI> <AppKey> <Rain> <UseLeds>"
+from lorawanpi import LoRaWAN, RadioConfig
 
 
 def parse_led_flag(value: str) -> bool:
     try:
         parsed = int(value)
     except ValueError as exc:
-        raise ValueError("UseLeds must be 0 or 1") from exc
+        raise argparse.ArgumentTypeError("UseLeds must be 0 or 1") from exc
 
     if parsed not in (0, 1):
-        raise ValueError("UseLeds must be 0 or 1")
+        raise argparse.ArgumentTypeError("UseLeds must be 0 or 1")
     return bool(parsed)
 
 
-def print_downlink(downlink: bytes, rssi_dbm: int, snr_db: float) -> None:
-    print(f"RSSI: {rssi_dbm} dBm")
-    print(f"SNR: {snr_db:g} dB")
-    print("Data Received!")
-    print(" ".join(f"0x{byte:02x}" for byte in downlink))
+def print_downlink(downlink_payload: bytes, radio_rssi: int | None, radio_snr: float | None) -> None:
+    print(f"Downlink payload: {downlink_payload.hex()}")
+    if radio_rssi is not None:
+        print(f"RSSI: {radio_rssi} dBm")
+    if radio_snr is not None:
+        print(f"SNR: {radio_snr:g} dB")
 
 
-def main(argv: list[str]) -> int:
-    if len(argv) != 6:
-        print(usage(argv[0]), file=sys.stderr)
-        return 1
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Send an OTAA uplink using LoRaWANPi")
+    parser.add_argument("deveui", help="Device EUI (hex)")
+    parser.add_argument("appeui", help="Application EUI (hex)")
+    parser.add_argument("appkey", help="Application key (hex)")
+    parser.add_argument("data", help="Data payload (text)")
+    parser.add_argument("use_leds", type=parse_led_flag, help="0 or 1 to enable LEDs")
+    return parser.parse_args()
 
-    deveui = argv[1]
-    appeui = argv[2]
-    appkey = argv[3]
 
-    try:
-        rain = float(argv[4])
-        use_leds = parse_led_flag(argv[5])
-    except ValueError as exc:
-        print(exc, file=sys.stderr)
-        print(usage(argv[0]), file=sys.stderr)
-        return 1
+def main(args: argparse.Namespace) -> int:
+    payload = args.data.encode("utf-8")
+    use_leds = args.use_leds
 
-    payload = encode_rain_payload(rain)
     now = int(time.time())
     print(f"({now}) {time.ctime(now)}")
-    print(f"Payload: {' '.join(f'0x{byte:02x}' for byte in payload)}")
+    print(f"Payload: {payload.hex()}")
+
+    lora = LoRaWAN(radio=RadioConfig(use_leds=use_leds))
+    lora.configure_otaa(deveui=args.deveui, appeui=args.appeui, appkey=args.appkey)
 
     try:
-        result = send_rain_otaa(deveui, appeui, appkey, rain, use_leds=use_leds)
-    except (ValueError, LoraWanPiError) as exc:
+        result = lora.send(payload, port=1, confirmed=False, timeout=60.0)
+    except Exception as exc:
         print(exc, file=sys.stderr)
         return 1
 
-    if result.event == EV_TXCOMPLETE:
-        print(f"Event EV_TXCOMPLETE, time: {int(time.monotonic())}")
+    if result.ack:
+        print("Received ACK!")
     else:
-        print(f"Event {result.event}")
+        print("No ACK received.")
 
     if result.downlink:
-        print_downlink(result.downlink, result.rssi_dbm, result.snr_db)
+        print_downlink(result.downlink.payload, result.downlink.radio.rssi_dbm, result.downlink.radio.snr_db)
 
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv))
+    raise SystemExit(main(parse_args()))
