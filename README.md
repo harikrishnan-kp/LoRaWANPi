@@ -73,41 +73,44 @@ $ ./ttn-abp-send
 The repository also contains a Python wrapper that loads the LMIC code through a native shared library. Build it on the Raspberry Pi after WiringPi is installed:
 
 ```bash
-cd python
 make
 ```
 
-Then run Python from the repository root with `PYTHONPATH=python`, or run from the `python` folder:
+Then run Python from the repository root:
 
 ```python
-from lorawanpi import send_rain_abp
+from lorawanpi import LoRaWAN, RadioConfig
 
-result = send_rain_abp(
+lora = LoRaWAN(radio=RadioConfig(use_leds=True))
+
+lora.configure_abp(
     devaddr="AB0096CD",
     nwkskey="1A2B80150C4ED6DADA2B2CFD822C6378",
     appskey="12345678972908DA7A6C09771181A21C",
-    rain_mm=3.12,
-    use_leds=True,
 )
 
-print(result)
+result = lora.send(b"\x01\x38", port=1)
+print(result.ok)
 ```
 
-For arbitrary payloads:
+For OTAA:
 
 ```python
-from lorawanpi import send_abp
+from lorawanpi import LoRaWAN, RadioConfig
 
-send_abp(
-    devaddr="AB0096CD",
-    nwkskey="1A2B80150C4ED6DADA2B2CFD822C6378",
-    appskey="12345678972908DA7A6C09771181A21C",
-    payload=b"\x01\x38",
-    port=1,
+lora = LoRaWAN(radio=RadioConfig(use_leds=True))
+
+lora.configure_otaa(
+    deveui="0000000000000000",
+    appeui="0000000000000000",
+    appkey="00000000000000000000000000000000",
 )
+
+result = lora.send(b"temperature=25", port=1)
+print(result.ack)
 ```
 
-The native library is built as `python/lorawanpi/liblorawanpi.so`.
+The native library is built as `lorawanpi/liblorawanpi.so`.
 
 ## Examples
 

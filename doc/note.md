@@ -6,10 +6,10 @@
 
 ## python wrapper
 ```
-cd python
+cd lmic_python
 make
 ```
-Makefile builds python/lorawanpi/liblorawanpi.so That shared library is required by the Python wrapper APIs
+Makefile builds lmic_python/lorawanpi/liblorawanpi.so That shared library is required by the Python wrapper APIs
 
 ## TODO
 - Test in real hardware 
