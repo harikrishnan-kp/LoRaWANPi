@@ -18,7 +18,7 @@ EV_TXCOMPLETE = 10
 
 
 def usage(program: str) -> str:
-    return f"Usage: {program} <DevAddr> <Nwkskey> <Appskey> <Rain> <UseLeds>"
+    return f"Usage: {program} <DevAddr> <Nwkskey> <Appskey> <Data> <UseLeds>"
 
 
 def parse_led_flag(value: str) -> bool:
@@ -44,25 +44,23 @@ def main(argv: list[str]) -> int:
         print(usage(argv[0]), file=sys.stderr)
         return 1
 
-    devaddr = argv[1]
-    nwkskey = argv[2]
-    appskey = argv[3]
+    _, devaddr, nwkskey, appskey, data_str, leds_str = argv
 
     try:
-        rain = float(argv[4])
-        use_leds = parse_led_flag(argv[5])
+        data = float(data_str)
+        use_leds = parse_led_flag(leds_str)
     except ValueError as exc:
         print(exc, file=sys.stderr)
         print(usage(argv[0]), file=sys.stderr)
         return 1
 
-    payload = encode_rain_payload(rain)
+    payload = encode_rain_payload(data)
     now = int(time.time())
     print(f"({now}) {time.ctime(now)}")
     print(f"Payload: {' '.join(f'0x{byte:02x}' for byte in payload)}")
 
     try:
-        result = send_rain_abp(devaddr, nwkskey, appskey, rain, use_leds=use_leds)
+        result = send_rain_abp(devaddr, nwkskey, appskey, data, use_leds=use_leds)
     except (ValueError, LoraWanPiError) as exc:
         print(exc, file=sys.stderr)
         return 1
@@ -91,6 +89,6 @@ if __name__ == "__main__":
 #
 # function Decode(fPort, bytes, variables) {
 #   var decoded = {};
-#   decoded.rain = ((bytes[0] << 8) | bytes[1]) / 100.0;
+#   decoded.data = ((bytes[0] << 8) | bytes[1]) / 100.0;
 #   return decoded;
 # }
